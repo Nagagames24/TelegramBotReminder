@@ -53,7 +53,7 @@ JOB_TEST = "test_interval"
 # ===================== РАБОТА С ФАЙЛОМ =====================
 def load_employees() -> bool:
     """
-    Загружает список сотрудников из JSON-файла.
+    Загружает список пользователей из JSON-файла.
     Возвращает True при успехе, False при ошибке.
     """
     global employees
@@ -90,7 +90,7 @@ def load_employees() -> bool:
 
         employees = data['employees']
         
-        # Дополнительная валидация каждого сотрудника
+        # Дополнительная валидация каждого user-а
         valid_employees = []
         for idx, emp in enumerate(employees):
             if not isinstance(emp, dict):
@@ -106,7 +106,7 @@ def load_employees() -> bool:
         
         employees = valid_employees
         active_count = sum(1 for e in employees if e.get('is_active', False))
-        logger.info(f"Загружено сотрудников: всего {len(employees)}, активно {active_count}")
+        logger.info(f"Загружено пользователей: всего {len(employees)}, активно {active_count}")
         return True
 
     except json.JSONDecodeError as e:
@@ -138,13 +138,13 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
-    """Показывает список сотрудников (только для админа)."""
+    """Показывает список пользователей (только для админа)."""
     if message.from_user.id != ADMIN_ID:
         await message.answer("У тебя нет прав на эту команду.")
         return
 
     if not employees:
-        await message.answer("Список сотрудников пуст.")
+        await message.answer("Список пользователей пуст.")
         return
 
     text = "**Текущий список рассылки:**\n\n"
@@ -166,7 +166,7 @@ async def cmd_reload(message: Message):
         return
 
     if load_employees():
-        await message.answer("Список сотрудников успешно перезагружен из файла.")
+        await message.answer("Список пользователей успешно перезагружен из файла.")
     else:
         await message.answer("X Ошибка при загрузке. Проверь логи и файл.")
 
@@ -222,7 +222,7 @@ async def send_payment_reminder(is_test: bool = False):
     logger.info(f"INFO ЗАПУСК РАССЫЛКИ {'[ТЕСТ]' if is_test else ''}")
     
     if not employees:
-        logger.warning("WARN Список сотрудников пуст. Рассылка отменена.")
+        logger.warning("WARN Список пользователей пуст. Рассылка отменена.")
         return
 
     success = 0
@@ -244,7 +244,7 @@ async def send_payment_reminder(is_test: bool = False):
             continue
 
         # Формируем текст сообщения
-        if is_test:
+        if is_test and tg_id==ADMIN_ID:
             text = f"[ТЕСТОВОЕ] Привет, {name}! Это проверка системы уведомлений."
         else:
             # Здесь можно добавить актуальную дату или сумму
@@ -252,7 +252,7 @@ async def send_payment_reminder(is_test: bool = False):
             text = (
                 f"**Ежемесячное напоминание**\n\n"
                 f"Привет, {name}!\n"
-                f"Напоминаю, что сегодня нужно оплатить VPN за {current_month+1}.\n"
+                f"Напоминаю, что сегодня нужно оплатить VPN 200 рублей за {current_month+1}.\n"
             )
 
         try:
@@ -291,9 +291,9 @@ async def on_startup():
     """Действия при запуске бота."""
     logger.info("Бот запускается...")
     
-    # Загружаем список сотрудников
+    # Загружаем список пользователей
     if not load_employees():
-        logger.critical("Критическая ошибка: не удалось загрузить список сотрудников.")
+        logger.critical("Критическая ошибка: не удалось загрузить список пользователей.")
         logger.critical("Бот продолжит работу, но рассылка не сработает до исправления.")
     
     # Настраиваем расписание
