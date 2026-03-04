@@ -128,7 +128,7 @@ async def cmd_start(message: Message):
         await message.answer(
             f"Привет, {emp['name']}!\n"
             f"Ты в списке на получение ежемесячных напоминаний об оплате.\n"
-            f"Первое напоминание придёт 1-го числа в 10:00."
+            f"Первое напоминание придёт 13-го числа в 10:00."
         )
     else:
         await message.answer(
