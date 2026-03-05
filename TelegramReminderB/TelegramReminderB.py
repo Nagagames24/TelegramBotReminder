@@ -23,7 +23,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 # ===================== КОНФИГУРАЦИЯ =====================
 BOT_TOKEN = ""
-ADMIN_ID = 1407081834
+ADMIN_ID = 
 EMPLOYEES_FILE = Path("employees.json")
 LOG_FILE = Path("bot.log")
 
