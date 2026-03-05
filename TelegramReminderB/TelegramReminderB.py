@@ -130,6 +130,7 @@ async def cmd_start(message: Message):
             f"Ты в списке на получение ежемесячных напоминаний об оплате.\n"
             f"Первое напоминание придёт 13-го числа в 10:00."
         )
+        emp['is_active'] = True
     else:
         await message.answer(
             "Привет! Твой ID не найден в списке рассылки.\n"
