@@ -22,7 +22,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 # ===================== КОНФИГУРАЦИЯ =====================
-BOT_TOKEN = "8777556766:AAGHWTiRcqYpbRkgV2iEDOdnVqIAmybjJ6w"
+BOT_TOKEN = ""
 ADMIN_ID = 1407081834
 EMPLOYEES_FILE = Path("employees.json")
 LOG_FILE = Path("bot.log")
