@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Telegram Bot for Monthly Payment Reminders
-Version: 1.0
-Author: DevOps Team
-Description: Sends reminders to employees on the 1st of every month at 10:00.
+Version: 1.2
+Author: Nagagames24
+Description: Sends reminders to employees on the 13th of every month at 10:00.
+Users automatically activate themselves by sending /start.
 """
 
 import json
@@ -12,7 +13,7 @@ import logging
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -22,8 +23,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 # ===================== КОНФИГУРАЦИЯ =====================
-BOT_TOKEN = ""
-ADMIN_ID = 
+BOT_TOKEN = "8777556766:AAGHWTiRcqYpbRkgV2iEDOdnVqIAmybjJ6w"
+ADMIN_ID = 1407081834
 EMPLOYEES_FILE = Path("employees.json")
 LOG_FILE = Path("bot.log")
 
@@ -33,7 +34,6 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE, encoding='utf-8')
-        # Убран вывод в консоль
     ]
 )
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ scheduler = AsyncIOScheduler()
 # Хранилище данных (загружается из файла)
 employees: List[Dict] = []
 
-# ID задач в планировщике (для удобства управления)
+# ID задач в планировщике
 JOB_MONTHLY = "monthly_payment"
 JOB_TEST = "test_interval"
 
@@ -59,8 +59,7 @@ def load_employees() -> bool:
     global employees
     try:
         if not EMPLOYEES_FILE.exists():
-            logger.error(f"EROR Файл {EMPLOYEES_FILE} не найден. Создаю пустой шаблон.")
-            # Создаём шаблон файла для удобства
+            logger.error(f"ERROR Файл {EMPLOYEES_FILE} не найден. Создаю пустой шаблон.")
             template = {
                 "employees": [
                     {
@@ -79,7 +78,6 @@ def load_employees() -> bool:
         with open(EMPLOYEES_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        # Валидация структуры
         if not isinstance(data, dict) or 'employees' not in data:
             logger.error("ERROR Неверная структура JSON. Ожидается {'employees': [...]}")
             return False
@@ -90,11 +88,10 @@ def load_employees() -> bool:
 
         employees = data['employees']
         
-        # Дополнительная валидация каждого user-а
         valid_employees = []
         for idx, emp in enumerate(employees):
             if not isinstance(emp, dict):
-                logger.warning(f"Запись #{idx} пропущена: не является объектом")
+                logger.warning(f"WARN Запись #{idx} пропущена: не является объектом")
                 continue
             if 'telegram_id' not in emp or 'name' not in emp:
                 logger.warning(f"WARN Запись #{idx} пропущена: отсутствует telegram_id или name")
@@ -102,40 +99,84 @@ def load_employees() -> bool:
             if not isinstance(emp['telegram_id'], int):
                 logger.warning(f"WARN Запись #{idx} пропущена: telegram_id должен быть числом")
                 continue
+            if 'is_active' not in emp:
+                emp['is_active'] = True
             valid_employees.append(emp)
         
         employees = valid_employees
         active_count = sum(1 for e in employees if e.get('is_active', False))
-        logger.info(f"Загружено пользователей: всего {len(employees)}, активно {active_count}")
+        logger.info(f"INFO Загружено пользователей: всего {len(employees)}, активно {active_count}")
         return True
 
     except json.JSONDecodeError as e:
         logger.error(f"ERROR Ошибка парсинга JSON: {e}")
-        logger.error(f"ERROR Проверь файл {EMPLOYEES_FILE} на наличие синтаксических ошибок.")
         return False
     except Exception as e:
         logger.error(f"ERROR Неожиданная ошибка при загрузке: {e}")
         return False
 
+def save_employees() -> bool:
+    """
+    Сохраняет текущий список сотрудников в JSON-файл.
+    Возвращает True при успехе, False при ошибке.
+    """
+    try:
+        if EMPLOYEES_FILE.exists():
+            backup_file = EMPLOYEES_FILE.with_suffix('.json.bak')
+            EMPLOYEES_FILE.rename(backup_file)
+        
+        with open(EMPLOYEES_FILE, 'w', encoding='utf-8') as f:
+            json.dump({"employees": employees}, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"INFO Список сотрудников сохранён в {EMPLOYEES_FILE}")
+        return True
+    except Exception as e:
+        logger.error(f"ERROR Ошибка при сохранении файла: {e}")
+        return False
+
+def activate_user(telegram_id: int) -> bool:
+    """
+    Активирует пользователя по telegram_id.
+    Возвращает True, если пользователь найден и активирован.
+    """
+    global employees
+    for emp in employees:
+        if emp.get('telegram_id') == telegram_id:
+            if not emp.get('is_active', False):
+                emp['is_active'] = True
+                logger.info(f"INFO Пользователь {emp.get('name')} (ID: {telegram_id}) активирован")
+                save_employees()
+                return True
+            else:
+                logger.info(f"INFO Пользователь {emp.get('name')} (ID: {telegram_id}) уже активен")
+                return True
+    logger.info(f"INFO Пользователь с ID {telegram_id} не найден в списке")
+    return False
+
 # ===================== КОМАНДЫ БОТА =====================
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    """Приветственное сообщение. Обязательно для активации диалога."""
+    """Приветственное сообщение. Автоматически активирует пользователя."""
     user_id = message.from_user.id
+    user_name = message.from_user.full_name or "Коллега"
+    
+    activated = activate_user(user_id)
     emp = next((e for e in employees if e.get('telegram_id') == user_id), None)
     
     if emp:
         await message.answer(
-            f"Привет, {emp['name']}!\n"
-            f"Ты в списке на получение ежемесячных напоминаний об оплате.\n"
+            f"Привет, {emp['name']}!\n\n"
+            f"Твой профиль активирован. Теперь ты будешь получать ежемесячные напоминания об оплате.\n"
             f"Первое напоминание придёт 13-го числа в 10:00."
         )
-        emp['is_active'] = True
+        logger.info(f"INFO Пользователь {emp['name']} (ID: {user_id}) активировался через /start")
     else:
         await message.answer(
-            "Привет! Твой ID не найден в списке рассылки.\n"
-            "Обратись к администратору, чтобы тебя добавили."
+            f"Привет, {user_name}!\n\n"
+            f"Твой ID ({user_id}) не найден в списке рассылки.\n"
+            f"Обратись к администратору, чтобы тебя добавили."
         )
+        logger.info(f"INFO Неизвестный пользователь (ID: {user_id}) написал /start")
 
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
@@ -150,12 +191,12 @@ async def cmd_list(message: Message):
 
     text = "**Текущий список рассылки:**\n\n"
     for emp in employees:
-        status = "Yes" if emp.get('is_active', False) else "No"
+        status = " Yes" if emp.get('is_active', False) else "❌ No"
         text += f"{status} {emp.get('name')} (`{emp.get('telegram_id')}`)\n"
     
-    # Добавляем статистику
     active = sum(1 for e in employees if e.get('is_active', False))
-    text += f"\nВсего: {len(employees)} | Активно: {active}"
+    inactive = len(employees) - active
+    text += f"\n Всего: {len(employees)} | Активно: {active} | Неактивно: {inactive}"
     
     await message.answer(text, parse_mode="Markdown")
 
@@ -169,7 +210,7 @@ async def cmd_reload(message: Message):
     if load_employees():
         await message.answer("Список пользователей успешно перезагружен из файла.")
     else:
-        await message.answer("X Ошибка при загрузке. Проверь логи и файл.")
+        await message.answer("Ошибка при загрузке. Проверь логи и файл.")
 
 @dp.message(Command("test_send"))
 async def cmd_test_send(message: Message):
@@ -193,7 +234,7 @@ async def cmd_cancel_test(message: Message):
     if job:
         scheduler.remove_job(JOB_TEST)
         await message.answer("Тестовая рассылка отменена.")
-        logger.info("Тестовая рассылка отменена администратором.")
+        logger.info("INFO Тестовая рассылка отменена администратором.")
     else:
         await message.answer("Тестовая рассылка не запущена.")
 
@@ -211,7 +252,85 @@ async def cmd_cancel_monthly(message: Message):
                              "Для восстановления используй /schedule_monthly")
         logger.info("INFO Ежемесячная рассылка отменена администратором.")
     else:
-        await message.answer(" Ежемесячная рассылка не запланирована.")
+        await message.answer("Ежемесячная рассылка не запланирована.")
+
+@dp.message(Command("schedule_monthly"))
+async def cmd_schedule_monthly(message: Message):
+    """Восстанавливает ежемесячную рассылку (только для админа)."""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У тебя нет прав на эту команду.")
+        return
+
+    if scheduler.get_job(JOB_MONTHLY):
+        scheduler.remove_job(JOB_MONTHLY)
+    
+    scheduler.add_job(
+        send_payment_reminder,
+        CronTrigger(day=13, hour=10, minute=0),
+        id=JOB_MONTHLY,
+        replace_existing=True,
+        misfire_grace_time=3600
+    )
+    
+    next_run = scheduler.get_job(JOB_MONTHLY).next_run_time
+    await message.answer(f"Ежемесячная рассылка восстановлена.\n"
+                         f"Следующий запуск: {next_run.strftime('%d.%m.%Y %H:%M')}")
+    logger.info(f"INFO Ежемесячная рассылка восстановлена. Следующий запуск: {next_run}")
+
+@dp.message(Command("deactivate"))
+async def cmd_deactivate(message: Message):
+    """Деактивирует пользователя (только для админа)."""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У тебя нет прав на эту команду.")
+        return
+
+    args = message.text.split()
+    if len(args) != 2:
+        await message.answer("Формат: /deactivate <telegram_id>")
+        return
+
+    try:
+        tg_id = int(args[1])
+    except ValueError:
+        await message.answer("Telegram ID должен быть числом")
+        return
+
+    for emp in employees:
+        if emp.get('telegram_id') == tg_id:
+            emp['is_active'] = False
+            save_employees()
+            await message.answer(f"Пользователь {emp.get('name')} деактивирован.")
+            logger.info(f"INFO Пользователь {emp.get('name')} (ID: {tg_id}) деактивирован администратором")
+            return
+
+    await message.answer("❌ Пользователь с таким ID не найден.")
+
+@dp.message(Command("jobs"))
+async def cmd_jobs(message: Message):
+    """Показывает список запланированных задач (только для админа)."""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У тебя нет прав на эту команду.")
+        return
+
+    jobs = scheduler.get_jobs()
+    if not jobs:
+        await message.answer("📭 Нет запланированных задач.")
+        return
+
+    text = " **Запланированные задачи:**\n\n"
+    for job in jobs:
+        status = "✅" if job.next_run_time else "❌"
+        name = {
+            JOB_MONTHLY: "Ежемесячная рассылка (13 число)",
+            JOB_TEST: "Тестовая рассылка"
+        }.get(job.id, job.id)
+        
+        if job.next_run_time:
+            text += f"{status} {name}\n   ⏰ {job.next_run_time.strftime('%d.%m.%Y %H:%M')}\n"
+        else:
+            text += f"{status} {name} (не запланирована)\n"
+    
+    await message.answer(text, parse_mode="Markdown")
 
 # ===================== ЛОГИКА РАССЫЛКИ =====================
 async def send_payment_reminder(is_test: bool = False):
@@ -231,7 +350,6 @@ async def send_payment_reminder(is_test: bool = False):
     blocked = 0
 
     for emp in employees:
-        # Пропускаем неактивных
         if not emp.get('is_active', False):
             logger.info(f"INFO Пропуск (неактивен): {emp.get('name')}")
             continue
@@ -240,34 +358,33 @@ async def send_payment_reminder(is_test: bool = False):
         name = emp.get('name', 'Коллега')
 
         if not tg_id:
-            logger.warning(f"У {name} нет telegram_id")
+            logger.warning(f"WARN У {name} нет telegram_id")
             failed += 1
             continue
 
-        # Формируем текст сообщения
-        if is_test and tg_id==ADMIN_ID:
+        if is_test:
             text = f"[ТЕСТОВОЕ] Привет, {name}! Это проверка системы уведомлений."
         else:
-            # Здесь можно добавить актуальную дату или сумму
             current_month = datetime.now().strftime("%B")
             text = (
                 f"**Ежемесячное напоминание**\n\n"
                 f"Привет, {name}!\n"
-                f"Напоминаю, что сегодня нужно оплатить VPN 200 рублей за {current_month+1}.\n"
+                f"Напоминаю, что сегодня нужно оплатить VPN 200 рублей.\n"
             )
 
         try:
             await bot.send_message(tg_id, text, parse_mode="Markdown")
             logger.info(f"INFO Отправлено: {name} (ID: {tg_id})")
             success += 1
-            
             await asyncio.sleep(0.3)
 
         except TelegramForbiddenError:
-            logger.error(f"EROR Бот заблокирован пользователем: {name} (ID: {tg_id})")
+            logger.error(f"ERROR Бот заблокирован пользователем: {name} (ID: {tg_id})")
             blocked += 1
             failed += 1
             emp['is_active'] = False
+            save_employees()
+            logger.info(f"INFO Пользователь {name} деактивирован (блокировка бота)")
             
         except TelegramRetryAfter as e:
             logger.warning(f"WARN Telegram просит подождать {e.retry_after} сек. Ждём...")
@@ -281,7 +398,7 @@ async def send_payment_reminder(is_test: bool = False):
                 failed += 1
 
         except Exception as e:
-            logger.error(f"X Ошибка отправки {name}: {e}")
+            logger.error(f"ERROR Ошибка отправки {name}: {e}")
             failed += 1
 
     logger.info(f"ИТОГИ: Успешно={success}, Ошибки={failed}, Заблокировали={blocked}")
@@ -290,53 +407,44 @@ async def send_payment_reminder(is_test: bool = False):
 # ===================== ПЛАНИРОВЩИК =====================
 async def on_startup():
     """Действия при запуске бота."""
-    logger.info("Бот запускается...")
+    logger.info("INFO Бот запускается...")
     
-    # Загружаем список пользователей
     if not load_employees():
-        logger.critical("Критическая ошибка: не удалось загрузить список пользователей.")
-        logger.critical("Бот продолжит работу, но рассылка не сработает до исправления.")
+        logger.critical("CRITICAL Не удалось загрузить список пользователей.")
     
-    # Настраиваем расписание
-    # Каждый месяц 1-го числа в 10:00
     scheduler.add_job(
         send_payment_reminder,
         CronTrigger(day=13, hour=10, minute=0),
-        id="monthly_payment",
+        id=JOB_MONTHLY,
         replace_existing=True,
-        misfire_grace_time=3600  # Если бот был выключен, запустит в течение часа после включения
+        misfire_grace_time=3600
     )
     
     scheduler.start()
-    logger.info("⏰ Планировщик запущен. Жду 13-го числа 10:00...")
+    logger.info("INFO Планировщик запущен. Жду 13-го числа 10:00...")
     
-    # Показываем текущее расписание
     jobs = scheduler.get_jobs()
     for job in jobs:
-        logger.info(f"📅 Запланирована задача: {job.id}, следующее выполнение: {job.next_run_time}")
+        logger.info(f"INFO Запланирована задача: {job.id}, следующее выполнение: {job.next_run_time}")
 
 async def on_shutdown():
     """Действия при остановке бота."""
-    logger.info("🔴 Бот останавливается...")
+    logger.info("INFO Бот останавливается...")
     scheduler.shutdown()
     await bot.session.close()
 
 # ===================== ТОЧКА ВХОДА =====================
 async def main():
-    """Главная функция."""
-    # Регистрируем обработчики событий
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
     
-    # Запускаем поллинг
-    logger.info("🎯 Бот вышел на охоту...")
+    logger.info("INFO Бот вышел на охоту...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("👋 Бот остановлен пользователем.")
+        logger.info("INFO Бот остановлен пользователем.")
     except Exception as e:
-        # Это исключение всё же попадёт в stderr, но это фатально, так и надо
-        logging.critical(f"💥 Фатальная ошибка: {e}", exc_info=True)
+        logging.critical(f"CRITICAL Фатальная ошибка: {e}", exc_info=True)
