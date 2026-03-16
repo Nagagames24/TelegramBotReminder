@@ -326,7 +326,7 @@ async def cmd_jobs(message: Message):
         }.get(job.id, job.id)
         
         if job.next_run_time:
-            text += f"{status} {name}\n   ⏰ {job.next_run_time.strftime('%d.%m.%Y %H:%M')}\n"
+            text += f"{status} {name}\n   {job.next_run_time.strftime('%d.%m.%Y %H:%M')}\n"
         else:
             text += f"{status} {name} (не запланирована)\n"
     
